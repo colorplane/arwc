@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ARWC</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">ARWC</div>
+      <div id="folderLabel" class="folder muted">Open a folder of .ARW / .ARWC.JPG files</div>
+      <div id="counter" class="counter muted"></div>
+    </header>
+
+    <main class="stage">
+      <button id="prevBtn" class="nav" type="button" aria-label="Previous">‹</button>
+      <div class="frame">
+        <img id="preview" alt="" hidden />
+        <div id="empty" class="empty">
+          Open a folder, then use the left and right arrow keys to move between files.
+        </div>
+        <div id="status" class="status" hidden></div>
+        <div
+          id="progress"
+          class="progress"
+          hidden
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+          aria-labelledby="progressLabel"
+        >
+          <div class="progress-row">
+            <span id="progressLabel">Compressing…</span>
+            <span id="progressPct">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <button id="stopBtn" type="button">Stop</button>
+        </div>
+      </div>
+      <button id="nextBtn" class="nav" type="button" aria-label="Next">›</button>
+    </main>
+
+    <footer class="bar">
+      <div class="meta">
+        <div id="filename" class="filename">—</div>
+        <div id="details" class="muted details"></div>
+      </div>
+      <div class="actions-col">
+        <label class="check">
+          <input id="removeOriginal" type="checkbox" />
+          Remove original files
+        </label>
+        <div class="actions">
+          <button id="openBtn" type="button">Open folder</button>
+          <button id="compressBtn" type="button" disabled>Compress</button>
+          <button id="decompressBtn" type="button" disabled>Decompress</button>
+        </div>
+        <div class="actions">
+          <button id="compressDirBtn" type="button" disabled>Compress directory (0 files)</button>
+          <button id="decompressDirBtn" type="button" disabled>Decompress directory (0 files)</button>
+        </div>
+      </div>
+    </footer>
+    <p class="hints muted">← → browse · C compress · D decompress · O open folder · Esc stop</p>
+    <script src="renderer.js"></script>
+  </body>
+</html>

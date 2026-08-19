@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Fetch CompressARWTestData
+        run: git clone --depth 1 https://github.com/colorplane/CompressARWTestData testdata
+
+      - name: cargo test
+        run: cargo test --verbose
+
+  artifacts:
+    name: artifact (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos-aarch64
+            src: target/release/compress-arw
+            ext: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo build --release
+        run: cargo build --release --bin compress-arw
+
+      - name: Package versioned binary
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+          NAME="compress-arw-${VERSION}-${{ matrix.name }}${{ matrix.ext }}"
+          mkdir -p dist
+          cp "${{ matrix.src }}" "dist/${NAME}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=${NAME}" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: dist/${{ env.ASSET_NAME }}
+          if-no-files-found: error
+          retention-days: 90
+
+  electron-windows:
+    name: electron (windows-x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Build Windows app
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm ci && npm run dist:win
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=arwc-${VERSION}.exe" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: electron/dist/${{ env.ASSET_NAME }}
+          if-no-files-found: error
+          retention-days: 90

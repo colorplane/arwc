@@ -1,0 +1,37 @@
+[package]
+name = "compress-arw"
+version = "0.1.0"
+edition = "2021"
+description = "Lossless Sony ARW compression as .ARWC.JPG (JPEG preview + EXIF, zstd raw trailer)"
+license = "MIT"
+repository = "https://github.com/colorplane/arwc"
+readme = "README.md"
+exclude = ["**/*.ARW", "**/*.arw"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "compress-arw"
+path = "src/bin/compress-arw.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["dep:clap"]
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+zstd = { version = "0.13.3", default-features = false }
+clap = { version = "4.5", features = ["derive"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[dev-dependencies]
+sha2 = "0.10"
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3"]

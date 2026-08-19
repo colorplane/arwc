@@ -1,0 +1,85 @@
+{
+  "name": "arwc-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "View, compress, and decompress .ARWC.JPG / Sony ARW files",
+  "author": "Mikhail Uvarov",
+  "main": "main.js",
+  "scripts": {
+    "rust": "cargo build --release --manifest-path ../Cargo.toml --target-dir ../target",
+    "start": "npm run rust && electron .",
+    "dist:mac": "npm run rust && electron-builder --mac dmg --arm64",
+    "dist:win": "npm run rust && electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^36.9.5",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.colorplane.arwc",
+    "productName": "ARWC",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css"
+    ],
+    "extraResources": [
+      {
+        "from": "../target/release",
+        "to": ".",
+        "filter": [
+          "compress-arw",
+          "compress-arw.exe"
+        ]
+      }
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.photography",
+      "identity": "Mikhail Uvarov (Q6RL5R9ZUH)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "artifactName": "arwc-${version}.dmg"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "extraFiles": [
+        {
+          "from": "../target/release/compress-arw.exe",
+          "to": "compress-arw.exe"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "ARWC",
+      "artifactName": "arwc-${version}.exe"
+    }
+  }
+}
