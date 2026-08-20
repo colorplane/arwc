@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const { spawn } = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -7,6 +8,24 @@ const path = require("path");
 let win;
 let folder = null;
 let currentChild = null;
+
+function sha1File(filePath) {
+  return crypto.createHash("sha1").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function verifyUncompressed(outPath, info) {
+  const size = fs.statSync(outPath).size;
+  if (info && info.orig_bytes != null && Number(info.orig_bytes) !== size) {
+    throw new Error(`uncompressed size mismatch: expected ${info.orig_bytes}, got ${size}`);
+  }
+  if (info && info.orig_sha1) {
+    const got = sha1File(outPath);
+    const want = String(info.orig_sha1).toLowerCase();
+    if (got !== want) {
+      throw new Error(`SHA-1 mismatch: expected ${want}, got ${got}`);
+    }
+  }
+}
 
 function rustBin() {
   const exe = process.platform === "win32" ? "compress-arw.exe" : "compress-arw";
@@ -117,6 +136,23 @@ function findPhotoIndex(files, selectPath) {
   return files.findIndex((f) => samePath(f.path, selectPath));
 }
 
+const FOOTER_LEN = 32;
+const FOOTER_MAGIC = "ARWH";
+
+function readOrigBytes(filePath, fileSize) {
+  if (fileSize < FOOTER_LEN) return null;
+  const buf = Buffer.alloc(FOOTER_LEN);
+  const fd = fs.openSync(filePath, "r");
+  try {
+    fs.readSync(fd, buf, 0, FOOTER_LEN, fileSize - FOOTER_LEN);
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (buf.toString("latin1", 28, 32) !== FOOTER_MAGIC) return null;
+  const n = Number(buf.readBigUInt64LE(0));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function listPhotos(dir) {
   return fs
     .readdirSync(dir)
@@ -131,6 +167,7 @@ function listPhotos(dir) {
         path: filePath,
         size: st.size,
         encoded,
+        orig_bytes: encoded ? readOrigBytes(filePath, st.size) : st.size,
         mtimeMs: st.mtimeMs,
       };
     });
@@ -307,8 +344,10 @@ ipcMain.handle("decompress", async (_e, filePath, opts = {}) => {
     });
     if (response !== 0) return null;
   }
+  const info = JSON.parse((await runCli(["info", "--json", filePath])).stdout);
   await runCli(["decode", filePath, "-o", dest]);
   const out = listedPath(dest);
+  verifyUncompressed(out, info);
   if (opts.removeOriginal && !samePath(filePath, out) && fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }

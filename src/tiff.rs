@@ -201,26 +201,20 @@ fn walk_ifd(data: &[u8], off: u32) -> Result<IfdWalk> {
         compression_at,
         strip_bytes_at,
     ) {
-        (
-            Some(0),
-            Some(w),
-            Some(h),
-            Some(b),
-            Some(c),
-            Some(so),
-            Some(sb),
-            Some(ca),
-            Some(sba),
-        ) if w > 0 && h > 0 && so > 0 && sb > 0 => Some(RawIfd {
-            width: w,
-            height: h,
-            bits: b,
-            compression: c,
-            strip_offset: so,
-            strip_bytes: sb,
-            compression_value_at: ca,
-            strip_bytes_value_at: sba,
-        }),
+        (Some(0), Some(w), Some(h), Some(b), Some(c), Some(so), Some(sb), Some(ca), Some(sba))
+            if w > 0 && h > 0 && so > 0 && sb > 0 =>
+        {
+            Some(RawIfd {
+                width: w,
+                height: h,
+                bits: b,
+                compression: c,
+                strip_offset: so,
+                strip_bytes: sb,
+                compression_value_at: ca,
+                strip_bytes_value_at: sba,
+            })
+        }
         _ => None,
     };
 
@@ -295,7 +289,10 @@ mod tests {
     #[test]
     fn rejects_short_and_big_endian() {
         assert!(matches!(parse_layout(&[]), Err(Error::Truncated)));
-        assert!(matches!(parse_layout(b"MMMMMMMM"), Err(Error::Unsupported(_))));
+        assert!(matches!(
+            parse_layout(b"MMMMMMMM"),
+            Err(Error::Unsupported(_))
+        ));
     }
 
     #[test]

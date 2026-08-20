@@ -5,7 +5,7 @@ fn map_err(e: crate::Error) -> JsValue {
 }
 
 /// Compress an uncompressed Sony ARW. Result is a `.ARWC.JPG` JPEG
-/// (preview + EXIF) with an ARWZ trailer after EOI.
+/// (stripable view EXIF + camera JPEG) with an ARWZ trailer after EOI.
 #[wasm_bindgen]
 pub fn encode(arw: &[u8], level: i32) -> Result<Vec<u8>, JsValue> {
     crate::encode_with_level(arw, level).map_err(map_err)
@@ -28,5 +28,7 @@ pub fn extract_preview(file: &[u8]) -> Result<Vec<u8>, JsValue> {
 /// How many leading bytes are the viewable JPEG (for Range requests).
 #[wasm_bindgen]
 pub fn preview_bytes(file: &[u8]) -> Result<u32, JsValue> {
-    crate::inspect(file).map(|i| i.preview_bytes).map_err(map_err)
+    crate::inspect(file)
+        .map(|i| i.preview_bytes)
+        .map_err(map_err)
 }

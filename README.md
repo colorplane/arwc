@@ -4,6 +4,20 @@ Lossless compressor for uncompressed Sony ARW (14-bit, 16-bit aligned). Encoded 
 
 Previewers, browsers, and Finder stop at JPEG EOI and show the image. `exiftool` reads the JPEG APP1 EXIF. The raw is not needed to view or to extract the JPEG.
 
+**Demo:** [arwc.colorplane.com](https://arwc.colorplane.com/)
+
+Sony stores Orientation on the ARW TIFF IFD0, not on the camera JPEG. Encode therefore prepends a small **view APP1** (`Software=ARWC`) with Orientation and, when one exists, a copied IFD1 JPEG thumbnail. Browsers and Gallery can rotate and thumbnail from the first tens of kilobytes. Decode **strips** that APP1 before splicing the camera JPEG back into the ARW, so the restored file is bit-identical. Files encoded before this APP1 still decode.
+
+## Cameras
+
+The codec does not look at the model name. It accepts Sony ARW whose raw strip is **uncompressed 14-bit**, 16-bit aligned, at EOF — the camera setting **RAW File Type → Uncompressed**. Sony’s lossy “Compressed RAW” and lossless-compressed ARW 4.0 are refused.
+
+**Tested:** Sony α7R III (ILCE-7RM3). On that body: **MENU → Camera Settings 1 → RAW File Type → Uncompressed**. Single-shot and continuous stay 14-bit. BULB and Long Exposure NR drop to 12-bit and will be refused.
+
+Other bodies that can write the same format (when Uncompressed is selected and the file stays 14-bit) include α7R II–VI, α7 II / III / IV, α7C / C II / CR, α7S II / III, α9 / II / III, α1 / II, α99 II, RX1R II / III, and ILX-LR1.
+
+Does not work: original α7 / α7R / α7S and most APS-C (compressed RAW only); α6700 (lossless compressed, no uncompressed option); 12-bit files from BULB, Long Exposure NR, or silent shooting on some older bodies.
+
 ## Downloads
 
 From [arwc.colorplane.com](https://arwc.colorplane.com) (v0.1.0):
@@ -48,16 +62,20 @@ The binary is `target/release/compress-arw`. Example:
 ## Layout
 
 ```
-[SOI … camera JPEG with EXIF … EOI]   ← already compressed, left as-is
+[SOI]
+[ARWC view APP1: Orientation + optional copied IFD1 JPEG]  ← display-only; stripped on decode
+[camera JPEG with original EXIF … EOI]
 [ARWZ trailer: TIFF remainder + zstd(Bayer-delta + byte-shuffle of the raw strip)]
+[orig size u64 LE + SHA-1 of the original ARW + magic ARWH]
 ```
 
 | Want | What to read |
 |---|---|
-| View / EXIF / preview JPEG | Bytes `0 .. EOI` only (typically < 1 MiB). HTTP `Range` works. |
-| Original ARW | Whole file → `decode` |
+| Orientation / EXIF thumbnail | First ~64 KiB (the view APP1). HTTP `Range` works. |
+| View / full preview JPEG | Bytes `0 .. EOI` (typically < 1 MiB). |
+| Original ARW | Whole file → `decode` (strips the view APP1) |
 
-The trailing TIFF header stores everything except the preview JPEG (that JPEG is already at the front). Decode splices it back so the ARW is bit-identical.
+The trailing TIFF header stores everything except the preview JPEG (that JPEG is already at the front). Decode splices it back so the ARW is bit-identical. The last 32 bytes store the uncompressed ARW size and its SHA-1 (`ARWH`); decode checks both.
 
 ## Library
 

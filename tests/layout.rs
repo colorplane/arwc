@@ -11,17 +11,17 @@ fn layout_finds_raw_and_preview() {
     assert_eq!(layout.raw.height, 8);
     assert_eq!(layout.raw.bits, 14);
     assert_eq!(layout.raw.compression, 1);
-    assert_eq!(
-        layout.raw.strip_bytes as usize,
-        16 * 8 * 2
-    );
+    assert_eq!(layout.raw.strip_bytes as usize, 16 * 8 * 2);
     assert_eq!(
         layout.raw.strip_offset as usize + layout.raw.strip_bytes as usize,
         arw.len()
     );
     assert_eq!(layout.jpegs.len(), 1);
     let j = &layout.jpegs[0];
-    assert_eq!(&arw[j.offset as usize..j.offset as usize + 2], &[0xff, 0xd8]);
+    assert_eq!(
+        &arw[j.offset as usize..j.offset as usize + 2],
+        &[0xff, 0xd8]
+    );
 }
 
 #[test]

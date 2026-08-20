@@ -92,6 +92,12 @@ fn cli_encode_preview_decode() {
     let body = String::from_utf8_lossy(&json.stdout);
     assert!(body.contains("\"kind\":\"jpeg_container\""));
     assert!(body.contains("\"encoded\":true"));
+    assert!(body.contains("\"orig_bytes\":"));
+    assert!(body.contains("\"orig_sha1\":\""));
+    let info_txt = String::from_utf8_lossy(&info.stdout);
+    assert!(info_txt.contains("orig_bytes"));
+    assert!(info_txt.contains("orig_sha1"));
+    assert!(info_txt.contains("ratio"));
 
     let prog = bin()
         .args([

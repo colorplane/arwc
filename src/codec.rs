@@ -1,7 +1,11 @@
 use crate::error::{Error, Result};
-use crate::jpeg::{jpeg_end, jpeg_exif_orientation, split_jpeg_prefix};
+use crate::jpeg::{
+    attach_view_exif, jpeg_end, jpeg_exif_orientation, jpeg_exif_thumbnail, split_jpeg_prefix,
+    strip_view_exif,
+};
 use crate::tiff::{ifd0_orientation, jpeg_bytes, parse_layout};
 use crate::transform;
+use sha1::{Digest, Sha1};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -10,6 +14,11 @@ pub const VERSION: u8 = 2;
 pub const TRANSFORM_BAYER_HDELTA_SHUFFLE: u8 = 1;
 pub const TRAILER_HEADER_LEN: usize = 40;
 pub const DEFAULT_LEVEL: i32 = 19;
+
+/// EOF footer: uncompressed size + SHA-1 of the original ARW.
+/// `[orig_bytes u64 LE][sha1 20][magic ARWH]`
+pub const FOOTER_MAGIC: &[u8; 4] = b"ARWH";
+pub const FOOTER_LEN: usize = 32;
 
 /// Canonical suffix for encoded files (`photo.ARW` → `photo.ARWC.JPG`).
 pub const ENCODED_EXTENSION: &str = ".ARWC.JPG";
@@ -56,8 +65,62 @@ pub struct FileInfo {
     pub width: u16,
     pub height: u16,
     pub encoded: bool,
-    /// EXIF Orientation 1–8. Sony stores this on TIFF IFD0, not the preview JPEG.
+    /// EXIF Orientation 1–8. Encoded files put this in a stripable view APP1
+    /// so browsers and Gallery do not need the ARW TIFF. Sony ARW still stores
+    /// it on TIFF IFD0, not the camera JPEG.
     pub orientation: u16,
+    /// Uncompressed ARW size in bytes (trailer and/or EOF footer).
+    pub orig_bytes: Option<u64>,
+    /// SHA-1 of the uncompressed ARW, when the EOF footer is present.
+    pub orig_sha1: Option<[u8; 20]>,
+}
+
+impl FileInfo {
+    pub fn orig_sha1_hex(&self) -> Option<String> {
+        self.orig_sha1.map(hex_sha1)
+    }
+}
+
+fn hex_sha1(h: [u8; 20]) -> String {
+    let mut s = String::with_capacity(40);
+    for b in h {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+fn sha1_20(data: &[u8]) -> [u8; 20] {
+    let d = Sha1::digest(data);
+    let mut out = [0u8; 20];
+    out.copy_from_slice(&d);
+    out
+}
+
+struct OrigFooter {
+    orig_bytes: u64,
+    sha1: [u8; 20],
+}
+
+fn parse_orig_footer(file: &[u8]) -> Option<OrigFooter> {
+    if file.len() < FOOTER_LEN {
+        return None;
+    }
+    let f = &file[file.len() - FOOTER_LEN..];
+    if &f[28..32] != FOOTER_MAGIC {
+        return None;
+    }
+    Some(OrigFooter {
+        orig_bytes: u64::from_le_bytes(f[0..8].try_into().unwrap()),
+        sha1: f[8..28].try_into().unwrap(),
+    })
+}
+
+fn write_orig_footer(orig_bytes: u64, sha1: &[u8; 20]) -> [u8; FOOTER_LEN] {
+    let mut f = [0u8; FOOTER_LEN];
+    f[0..8].copy_from_slice(&orig_bytes.to_le_bytes());
+    f[8..28].copy_from_slice(sha1);
+    f[28..32].copy_from_slice(FOOTER_MAGIC);
+    f
 }
 
 struct TrailerMeta {
@@ -125,16 +188,34 @@ fn largest_jpeg_in_arw(arw: &[u8]) -> Result<(u32, u32)> {
     Ok((j.offset, j.length))
 }
 
+/// Smallest extra JPEG in the ARW (typically TIFF IFD1), for the view APP1.
+fn smallest_embedded_jpeg<'a>(
+    arw: &'a [u8],
+    jpegs: &[crate::tiff::JpegRef],
+    skip_off: u32,
+    skip_len: u32,
+) -> Option<&'a [u8]> {
+    jpegs
+        .iter()
+        .filter(|j| j.offset != skip_off || j.length != skip_len)
+        .filter(|j| (2..=60_000).contains(&j.length))
+        .filter_map(|j| jpeg_bytes(arw, j).ok())
+        .filter(|t| t.len() >= 2 && t[0] == 0xff && t[1] == 0xd8)
+        .min_by_key(|t| t.len())
+}
+
 fn preview_orientation(jpeg: &[u8], tiff: &[u8]) -> u16 {
     jpeg_exif_orientation(jpeg)
         .or_else(|| ifd0_orientation(tiff))
         .unwrap_or(1)
 }
 
-/// The camera JPEG (with its EXIF). Does not decompress the raw strip.
+/// The viewable JPEG. Does not decompress the raw strip.
 ///
 /// On a JPEG-container file this is a prefix of the file itself — scan to
-/// `FF D9`. On a Sony ARW it is copied out of the TIFF.
+/// `FF D9`. Encoded files prepend a stripable ARWC view APP1 (orientation and
+/// a copied thumbnail) in front of the camera JPEG. On a Sony ARW it is
+/// copied out of the TIFF.
 pub fn extract_preview(data: &[u8]) -> Result<&[u8]> {
     if data.len() >= 2 && data[0] == 0xff && data[1] == 0xd8 {
         let end = jpeg_end(data)?;
@@ -157,6 +238,10 @@ pub fn inspect(data: &[u8]) -> Result<FileInfo> {
             let meta = parse_trailer_meta(rest)?;
             let elided_end = TRAILER_HEADER_LEN.saturating_add(meta.header_elided_len as usize);
             let elided = rest.get(TRAILER_HEADER_LEN..elided_end).unwrap_or(&[]);
+            let footer = parse_orig_footer(data);
+            let orig_bytes = footer.as_ref().map(|f| f.orig_bytes).unwrap_or_else(|| {
+                u64::from(meta.orig_strip_offset) + u64::from(meta.orig_strip_bytes)
+            });
             return Ok(FileInfo {
                 kind: Kind::JpegContainer,
                 preview_bytes: jpeg.len() as u32,
@@ -164,6 +249,8 @@ pub fn inspect(data: &[u8]) -> Result<FileInfo> {
                 height: meta.height,
                 encoded: true,
                 orientation: preview_orientation(jpeg, elided),
+                orig_bytes: Some(orig_bytes),
+                orig_sha1: footer.map(|f| f.sha1),
             });
         }
         return Err(Error::Format("JPEG has no ARWZ trailer"));
@@ -189,6 +276,8 @@ pub fn inspect(data: &[u8]) -> Result<FileInfo> {
         height: layout.raw.height,
         encoded: false,
         orientation: preview_orientation(jpeg, data),
+        orig_bytes: Some(data.len() as u64),
+        orig_sha1: None,
     })
 }
 
@@ -260,6 +349,8 @@ pub fn encode_with_progress(
     if is_encoded(arw) {
         return Err(Error::Format("already encoded"));
     }
+    let orig_bytes = arw.len() as u64;
+    let orig_sha1 = sha1_20(arw);
     let layout = parse_layout(arw)?;
     let raw = &layout.raw;
     if raw.compression != 1 {
@@ -291,6 +382,10 @@ pub fn encode_with_progress(
     let eoi = jpeg_end(jpeg_full)?;
     let jpeg = &jpeg_full[..eoi];
     let padding = &jpeg_full[eoi..];
+    let orientation = preview_orientation(jpeg, arw);
+    let thumb = jpeg_exif_thumbnail(jpeg)
+        .or_else(|| smallest_embedded_jpeg(arw, &layout.jpegs, jpeg_off, jpeg_len));
+    let view = attach_view_exif(jpeg, orientation, thumb)?;
 
     let header = &arw[..so];
     let elided = elide_jpeg(header, jpeg_off as usize, jpeg_len as usize)?;
@@ -315,13 +410,15 @@ pub fn encode_with_progress(
         jpeg_padding_len: padding.len() as u32,
     };
 
-    let mut out =
-        Vec::with_capacity(jpeg.len() + TRAILER_HEADER_LEN + elided.len() + padding.len() + z.len());
-    out.extend_from_slice(jpeg);
+    let mut out = Vec::with_capacity(
+        view.len() + TRAILER_HEADER_LEN + elided.len() + padding.len() + z.len() + FOOTER_LEN,
+    );
+    out.extend_from_slice(&view);
     out.extend_from_slice(&write_trailer_meta(&meta));
     out.extend_from_slice(&elided);
     out.extend_from_slice(padding);
     out.extend_from_slice(&z);
+    out.extend_from_slice(&write_orig_footer(orig_bytes, &orig_sha1));
     report(100);
     Ok(out)
 }
@@ -335,7 +432,8 @@ pub fn encode(arw: &[u8]) -> Result<Vec<u8>> {
 }
 
 pub fn decode(file: &[u8]) -> Result<Vec<u8>> {
-    let (jpeg, rest) = split_jpeg_prefix(file)?;
+    let (view_jpeg, rest) = split_jpeg_prefix(file)?;
+    let jpeg = strip_view_exif(view_jpeg)?;
     let meta = parse_trailer_meta(rest)?;
     if meta.jpeg_len as usize != jpeg.len() + meta.jpeg_padding_len as usize {
         return Err(Error::Format("JPEG length does not match trailer"));
@@ -346,10 +444,19 @@ pub fn decode(file: &[u8]) -> Result<Vec<u8>> {
         .get(TRAILER_HEADER_LEN..elided_end)
         .ok_or(Error::Truncated)?;
     let padding = rest.get(elided_end..pad_end).ok_or(Error::Truncated)?;
-    let zstd_payload = rest.get(pad_end..).ok_or(Error::Truncated)?;
+    let footer = parse_orig_footer(file);
+    let zstd_end = if footer.is_some() {
+        rest.len().checked_sub(FOOTER_LEN).ok_or(Error::Truncated)?
+    } else {
+        rest.len()
+    };
+    if zstd_end < pad_end {
+        return Err(Error::Truncated);
+    }
+    let zstd_payload = rest.get(pad_end..zstd_end).ok_or(Error::Truncated)?;
 
     let mut jpeg_full = Vec::with_capacity(jpeg.len() + padding.len());
-    jpeg_full.extend_from_slice(jpeg);
+    jpeg_full.extend_from_slice(&jpeg);
     jpeg_full.extend_from_slice(padding);
     let header = restore_header(&elided, &jpeg_full, meta.jpeg_tiff_offset as usize)?;
     if header.len() != meta.orig_strip_offset as usize {
@@ -367,6 +474,14 @@ pub fn decode(file: &[u8]) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(header.len() + raw_bytes.len());
     out.extend_from_slice(&header);
     out.extend_from_slice(&raw_bytes);
+    if let Some(info) = footer {
+        if out.len() as u64 != info.orig_bytes {
+            return Err(Error::Integrity("uncompressed size mismatch"));
+        }
+        if sha1_20(&out) != info.sha1 {
+            return Err(Error::Integrity("SHA-1 mismatch"));
+        }
+    }
     Ok(out)
 }
 

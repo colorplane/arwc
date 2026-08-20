@@ -97,25 +97,24 @@ fn github_testdata_library_and_cli_roundtrip_same_sha256() {
     let work = tmp_dir("roundtrip");
 
     for arw_path in &files {
-        let original = fs::read(arw_path).unwrap_or_else(|e| {
-            panic!("read {}: {e}", arw_path.display())
-        });
+        let original =
+            fs::read(arw_path).unwrap_or_else(|e| panic!("read {}: {e}", arw_path.display()));
         let want = sha256_hex(&original);
 
-        let encoded = encode_with_level(&original, 3).unwrap_or_else(|e| {
-            panic!("encode {}: {e}", arw_path.display())
-        });
-        let decoded = decode(&encoded).unwrap_or_else(|e| {
-            panic!("decode {}: {e}", arw_path.display())
-        });
+        let encoded = encode_with_level(&original, 3)
+            .unwrap_or_else(|e| panic!("encode {}: {e}", arw_path.display()));
+        let decoded =
+            decode(&encoded).unwrap_or_else(|e| panic!("decode {}: {e}", arw_path.display()));
         let got_lib = sha256_hex(&decoded);
         assert_eq!(
-            got_lib, want,
+            got_lib,
+            want,
             "library roundtrip SHA-256 mismatch for {}",
             arw_path.display()
         );
         assert_eq!(
-            decoded, original,
+            decoded,
+            original,
             "library roundtrip bytes mismatch for {}",
             arw_path.display()
         );
@@ -161,12 +160,14 @@ fn github_testdata_library_and_cli_roundtrip_same_sha256() {
         let from_cli = fs::read(&back_arw).unwrap();
         let got_cli = sha256_hex(&from_cli);
         assert_eq!(
-            got_cli, want,
+            got_cli,
+            want,
             "CLI roundtrip SHA-256 mismatch for {}\n  original {want}\n  decoded  {got_cli}",
             arw_path.display()
         );
         assert_eq!(
-            from_cli, original,
+            from_cli,
+            original,
             "CLI roundtrip bytes mismatch for {}",
             arw_path.display()
         );

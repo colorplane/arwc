@@ -18,6 +18,7 @@ const decompressBtn = document.getElementById("decompressBtn");
 const compressDirBtn = document.getElementById("compressDirBtn");
 const decompressDirBtn = document.getElementById("decompressDirBtn");
 const removeOriginalEl = document.getElementById("removeOriginal");
+const diskSpaceEl = document.getElementById("diskSpace");
 
 let files = [];
 let index = 0;
@@ -43,10 +44,69 @@ function current() {
   return files[index] || null;
 }
 
+function setDetails(text, title) {
+  detailsEl.textContent = text;
+  if (title) detailsEl.title = title;
+  else detailsEl.removeAttribute("title");
+}
+
+function compressionTitle(info, file) {
+  if (!file || !file.encoded || !info || !info.orig_bytes) return "";
+  const orig = Number(info.orig_bytes);
+  if (!(orig > 0) || !file.size) return "";
+  const ratio = orig / file.size;
+  const pct = (100 * file.size) / orig;
+  return `${ratio.toFixed(2)}:1 · ${pct.toFixed(1)}% of original`;
+}
+
 function fmtSize(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  const v = Number(n) || 0;
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  if (v < 1024 * 1024 * 1024) return `${(v / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(v / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function photoStem(name) {
+  const n = String(name).toLowerCase();
+  if (n.endsWith(".arwc.jpg")) return n.slice(0, -".arwc.jpg".length);
+  if (n.endsWith(".arw")) return n.slice(0, -".arw".length);
+  return n;
+}
+
+function folderDiskStats(list) {
+  const groups = new Map();
+  for (const file of list) {
+    const stem = photoStem(file.name);
+    let group = groups.get(stem);
+    if (!group) {
+      group = { arw: null, enc: null };
+      groups.set(stem, group);
+    }
+    if (file.encoded) group.enc = file;
+    else group.arw = file;
+  }
+  let occupied = 0;
+  let original = 0;
+  for (const group of groups.values()) {
+    if (group.arw) occupied += group.arw.size;
+    if (group.enc) occupied += group.enc.size;
+    const orig =
+      (group.enc && Number(group.enc.orig_bytes)) ||
+      (group.arw && group.arw.size) ||
+      0;
+    original += orig;
+  }
+  return { saved: Math.max(0, original - occupied), occupied };
+}
+
+function renderDiskSpace() {
+  if (!files.length) {
+    diskSpaceEl.textContent = "Saved — / Occupied —";
+    return;
+  }
+  const { saved, occupied } = folderDiskStats(files);
+  diskSpaceEl.textContent = `Saved ${fmtSize(saved)} / Occupied ${fmtSize(occupied)}`;
 }
 
 function setStatus(text) {
@@ -76,12 +136,13 @@ function setProgress(pct) {
 function renderChrome() {
   const file = current();
   const has = files.length > 0;
+  renderDiskSpace();
   emptyEl.hidden = has;
   prevBtn.disabled = !has || busy;
   nextBtn.disabled = !has || busy;
   if (!file) {
     filenameEl.textContent = "—";
-    detailsEl.textContent = "";
+    setDetails("", "");
     counter.textContent = "";
     compressBtn.disabled = true;
     decompressBtn.disabled = true;
@@ -97,7 +158,7 @@ function renderChrome() {
   counter.textContent = `${index + 1} / ${files.length}`;
   filenameEl.textContent = file.name;
   const kind = file.encoded ? "ARWC JPEG" : "ARW";
-  detailsEl.textContent = `${kind} · ${fmtSize(file.size)}`;
+  setDetails(`${kind} · ${fmtSize(file.size)}`);
   compressBtn.disabled = busy || file.encoded;
   decompressBtn.disabled = busy || !file.encoded;
   const rawN = files.filter((f) => !f.encoded).length;
@@ -144,7 +205,10 @@ async function showCurrent(opts = {}) {
     applyOrientation(info && info.orientation);
     if (info) {
       const kind = file.encoded ? "ARWC JPEG" : "ARW";
-      detailsEl.textContent = `${kind} · ${displaySize(info)} · ${fmtSize(file.size)}`;
+      setDetails(
+        `${kind} · ${displaySize(info)} · ${fmtSize(file.size)}`,
+        compressionTitle(info, file)
+      );
     }
     if (!opts.keepProgress) setStatus("");
   } catch (err) {
@@ -269,7 +333,7 @@ decompressBtn.addEventListener("click", () =>
       setStatus("");
       return;
     }
-    await afterWrite(out, "Wrote", out.split(/[/\\]/).pop());
+    await afterWrite(out, "Wrote", `${out.split(/[/\\]/).pop()} · SHA-1 verified`);
   })
 );
 
@@ -376,7 +440,7 @@ async function decompressDirectory() {
         return;
       }
       setProgress(100);
-      await afterWrite(last, "Wrote", `${n} .ARW file${n === 1 ? "" : "s"}`);
+      await afterWrite(last, "Wrote", `${n} .ARW file${n === 1 ? "" : "s"} · SHA-1 verified`);
     } catch (err) {
       setProgress(null);
       if (last) {

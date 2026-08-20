@@ -113,7 +113,10 @@ fn fill_pixels(spec: &Spec) -> Vec<u16> {
                     }
                 }
                 Pixels::Lcg(seed) => {
-                    let mut s = seed.wrapping_add(i as u32).wrapping_mul(1664525).wrapping_add(1013904223);
+                    let mut s = seed
+                        .wrapping_add(i as u32)
+                        .wrapping_mul(1664525)
+                        .wrapping_add(1013904223);
                     s ^= s << 13;
                     (s as u16) & 0x3fff
                 }
@@ -176,10 +179,7 @@ pub fn build_arw(spec: Spec) -> Vec<u8> {
     entry(&mut buf, 330, 4, 1, sub_off as u32);
     entry(&mut buf, 513, 4, 1, jpeg_off as u32);
     entry(&mut buf, 514, 4, 1, preview.len() as u32);
-    put_u32(
-        &mut buf,
-        if thumb.is_some() { ifd1_off as u32 } else { 0 },
-    );
+    put_u32(&mut buf, if thumb.is_some() { ifd1_off as u32 } else { 0 });
 
     if let Some(t) = &thumb {
         put_u16(&mut buf, ifd1_n);

@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use compress_arw::{
-    decode, encode_with_progress, encoded_output_path, decoded_output_path, extract_preview, inspect,
-    Kind, DEFAULT_LEVEL,
+    decode, decoded_output_path, encode_with_progress, encoded_output_path, extract_preview,
+    inspect, Kind, DEFAULT_LEVEL,
 };
 use std::fs;
 use std::io::{self, Write};
@@ -86,9 +86,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Cmd::Decode { input, output } => {
             let output = output.unwrap_or_else(|| decoded_output_path(&input));
             let data = fs::read(&input)?;
+            let verified = inspect(&data).ok().and_then(|i| i.orig_sha1).is_some();
             let arw = decode(&data)?;
-            fs::write(&output, arw)?;
-            eprintln!("wrote {}", output.display());
+            fs::write(&output, &arw)?;
+            if verified {
+                eprintln!(
+                    "wrote {} ({} bytes, SHA-1 verified)",
+                    output.display(),
+                    arw.len()
+                );
+            } else {
+                eprintln!("wrote {} ({} bytes)", output.display(), arw.len());
+            }
         }
         Cmd::Preview { input, output } => {
             let data = fs::read(input)?;
@@ -103,8 +112,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     Kind::JpegContainer => "jpeg_container",
                     Kind::SonyArw => "sony_arw",
                 };
+                let sha1 = info
+                    .orig_sha1_hex()
+                    .map(|h| format!("\"{h}\""))
+                    .unwrap_or_else(|| "null".into());
+                let orig = info
+                    .orig_bytes
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "null".into());
                 println!(
-                    "{{\"kind\":\"{kind}\",\"encoded\":{},\"width\":{},\"height\":{},\"orientation\":{},\"preview_bytes\":{},\"file_bytes\":{}}}",
+                    "{{\"kind\":\"{kind}\",\"encoded\":{},\"width\":{},\"height\":{},\"orientation\":{},\"preview_bytes\":{},\"file_bytes\":{},\"orig_bytes\":{orig},\"orig_sha1\":{sha1}}}",
                     info.encoded,
                     info.width,
                     info.height,
@@ -119,6 +136,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 println!("orientation     {}", info.orientation);
                 println!("preview_bytes   {}", info.preview_bytes);
                 println!("file_bytes      {}", data.len());
+                if let Some(n) = info.orig_bytes {
+                    println!("orig_bytes      {n}");
+                    if info.encoded && n > 0 {
+                        println!(
+                            "ratio           {:.2}:1 ({:.1}% of original)",
+                            n as f64 / data.len() as f64,
+                            100.0 * data.len() as f64 / n as f64
+                        );
+                    }
+                }
+                if let Some(h) = info.orig_sha1_hex() {
+                    println!("orig_sha1       {h}");
+                }
             }
         }
     }

@@ -23,6 +23,7 @@ wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
 zstd = { version = "0.13.3", default-features = false }
+sha1 = { version = "0.10", default-features = false }
 clap = { version = "4.5", features = ["derive"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 

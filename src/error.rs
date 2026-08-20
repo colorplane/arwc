@@ -6,6 +6,7 @@ pub enum Error {
     Unsupported(&'static str),
     Truncated,
     Zstd(String),
+    Integrity(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -15,6 +16,7 @@ impl fmt::Display for Error {
             Error::Unsupported(m) => write!(f, "unsupported ARW: {m}"),
             Error::Truncated => write!(f, "truncated file"),
             Error::Zstd(m) => write!(f, "zstd: {m}"),
+            Error::Integrity(m) => write!(f, "integrity check failed: {m}"),
         }
     }
 }

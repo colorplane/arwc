@@ -5,7 +5,10 @@ use compress_arw::{decode, encode, encode_with_level, extract_preview, inspect, 
 
 #[test]
 fn empty_and_truncated() {
-    assert!(matches!(inspect(&[]), Err(Error::Truncated) | Err(Error::Format(_))));
+    assert!(matches!(
+        inspect(&[]),
+        Err(Error::Truncated) | Err(Error::Format(_))
+    ));
     assert!(encode(&[0xff, 0xd8]).is_err());
     assert!(decode(&[0xff, 0xd8, 0xff, 0xd9]).is_err());
 }
@@ -84,9 +87,34 @@ fn truncated_container() {
 #[test]
 fn corrupt_zstd_payload() {
     let mut enc = encode_with_level(&default_arw(), 3).unwrap();
-    let last = enc.len() - 1;
+    let last = enc.len() - compress_arw::FOOTER_LEN - 1;
     enc[last] ^= 0xff;
-    assert!(matches!(decode(&enc), Err(Error::Zstd(_)) | Err(Error::Format(_))));
+    assert!(matches!(
+        decode(&enc),
+        Err(Error::Zstd(_)) | Err(Error::Format(_))
+    ));
+}
+
+#[test]
+fn tampered_sha1_is_rejected() {
+    let mut enc = encode_with_level(&default_arw(), 3).unwrap();
+    let sha1_byte = enc.len() - compress_arw::FOOTER_LEN + 8;
+    enc[sha1_byte] ^= 0xff;
+    assert!(matches!(
+        decode(&enc),
+        Err(Error::Integrity("SHA-1 mismatch"))
+    ));
+}
+
+#[test]
+fn tampered_orig_size_is_rejected() {
+    let mut enc = encode_with_level(&default_arw(), 3).unwrap();
+    let size_byte = enc.len() - compress_arw::FOOTER_LEN;
+    enc[size_byte] ^= 0x01;
+    assert!(matches!(
+        decode(&enc),
+        Err(Error::Integrity("uncompressed size mismatch"))
+    ));
 }
 
 #[test]
