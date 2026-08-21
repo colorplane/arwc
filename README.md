@@ -20,10 +20,11 @@ Does not work: original α7 / α7R / α7S and most APS-C (compressed RAW only); 
 
 ## Downloads
 
-From [arwc.colorplane.com](https://arwc.colorplane.com) (v0.1.0):
+CI artifacts from [colorplane/arwc](https://github.com/colorplane/arwc/actions) (v0.1.0):
 
-- [Windows x86_64 app](https://arwc.colorplane.com/arwc-0.1.0.exe) (ARWC viewer with compressor bundled)
-- [macOS Apple Silicon app](https://arwc.colorplane.com/arwc-0.1.0.dmg) (ARWC viewer with compressor bundled)
+- [Windows x86_64 app](https://github.com/colorplane/arwc/actions/runs/32271073607/artifacts/9372267637) (ARWC viewer with compressor bundled)
+- [macOS Apple Silicon CLI](https://github.com/colorplane/arwc/actions/runs/32271073607/artifacts/9372180312)
+- macOS Intel app (ARWC viewer with compressor bundled; built by the `electron (macos-x64)` CI job)
 
 ## Build on Linux
 
@@ -121,8 +122,9 @@ npm start
 Packaged builds bundle the same CLI (`extraResources`; on Windows also next to `ARWC.exe`):
 
 ```
-npm run dist:mac    # macOS DMG (run on Apple Silicon)
-npm run dist:win    # Windows NSIS installer (run on Windows)
+npm run dist:mac          # macOS Apple Silicon DMG
+npm run dist:mac:intel    # macOS Intel DMG (cross-compile from Apple Silicon)
+npm run dist:win          # Windows NSIS installer (run on Windows)
 ```
 
 ## Tests
@@ -136,7 +138,7 @@ cargo test --test realdata
 
 Or point `COMPRESS_ARW_TESTDATA` at a clone of that repo.
 
-GitHub Actions (free for public repositories) clones that fixture repo and runs the same tests on push and pull request. It also stores versioned artifacts: the Windows Electron installer (`arwc-0.1.0.exe`, CLI bundled) and the macOS CLI (`compress-arw-0.1.0-macos-aarch64`).
+GitHub Actions (free for public repositories) clones that fixture repo and runs the same tests on push and pull request. It also stores versioned artifacts: the Windows Electron installer (`arwc-0.1.0.exe`), the Intel Mac Electron DMG (`arwc-0.1.0-intel.dmg`), and the Apple Silicon CLI (`compress-arw-0.1.0-macos-aarch64`).
 
 ## License
 

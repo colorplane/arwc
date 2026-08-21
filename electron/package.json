@@ -7,9 +7,13 @@
   "main": "main.js",
   "scripts": {
     "rust": "cargo build --release --manifest-path ../Cargo.toml --target-dir ../target",
+    "rust:intel": "cargo build --release --manifest-path ../Cargo.toml --target x86_64-apple-darwin --target-dir ../target --bin compress-arw",
+    "stage:cli": "mkdir -p .cli-bundle && (cp ../target/release/compress-arw .cli-bundle/ 2>/dev/null || true) && (cp ../target/release/compress-arw.exe .cli-bundle/ 2>/dev/null || true)",
+    "stage:cli:intel": "npm run rust:intel && mkdir -p .cli-bundle && cp ../target/x86_64-apple-darwin/release/compress-arw .cli-bundle/compress-arw",
     "start": "npm run rust && electron .",
-    "dist:mac": "npm run rust && electron-builder --mac dmg --arm64",
-    "dist:win": "npm run rust && electron-builder --win --x64"
+    "dist:mac": "npm run rust && npm run stage:cli && electron-builder --mac dmg --arm64",
+    "dist:mac:intel": "npm run stage:cli:intel && codesign --force --sign \"Developer ID Application: Mikhail Uvarov (Q6RL5R9ZUH)\" --options runtime --timestamp --identifier com.colorplane.compress-arw .cli-bundle/compress-arw && electron-builder --mac dmg --x64 -c.dmg.artifactName=arwc-$npm_package_version-intel.dmg",
+    "dist:win": "npm run rust && npm run stage:cli && electron-builder --win --x64"
   },
   "devDependencies": {
     "electron": "^36.9.5",
@@ -30,7 +34,7 @@
     ],
     "extraResources": [
       {
-        "from": "../target/release",
+        "from": ".cli-bundle",
         "to": ".",
         "filter": [
           "compress-arw",
@@ -44,7 +48,8 @@
         {
           "target": "dmg",
           "arch": [
-            "arm64"
+            "arm64",
+            "x64"
           ]
         }
       ],

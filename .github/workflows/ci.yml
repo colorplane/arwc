@@ -104,3 +104,46 @@ jobs:
           path: electron/dist/${{ env.ASSET_NAME }}
           if-no-files-found: error
           retention-days: 90
+
+  electron-macos-intel:
+    name: electron (macos-x64)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Build Intel Mac app
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm ci
+          npm run stage:cli:intel
+          VERSION=$(node -p "require('./package.json').version")
+          npx electron-builder --mac dmg --x64 -c.mac.identity=null -c.dmg.artifactName=arwc-${VERSION}-intel.dmg
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=arwc-${VERSION}-intel.dmg" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: electron/dist/${{ env.ASSET_NAME }}
+          if-no-files-found: error
+          retention-days: 90
