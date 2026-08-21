@@ -22,9 +22,9 @@ Does not work: original α7 / α7R / α7S and most APS-C (compressed RAW only); 
 
 CI artifacts from [colorplane/arwc](https://github.com/colorplane/arwc/actions) (v0.1.0):
 
-- [Windows x86_64 app](https://github.com/colorplane/arwc/actions/runs/32271073607/artifacts/9372267637) (ARWC viewer with compressor bundled)
-- [macOS Apple Silicon CLI](https://github.com/colorplane/arwc/actions/runs/32271073607/artifacts/9372180312)
-- macOS Intel app (ARWC viewer with compressor bundled; built by the `electron (macos-x64)` CI job)
+- [Windows x86_64 app](https://github.com/colorplane/arwc/actions/runs/32453267761/artifacts/9436409158) (ARWC viewer with compressor bundled)
+- [macOS Apple Silicon CLI](https://github.com/colorplane/arwc/actions/runs/32453267761/artifacts/9436359693)
+- [macOS Intel app](https://github.com/colorplane/arwc/actions/runs/32453267761/artifacts/9436378358) (ARWC viewer with compressor bundled)
 
 ## Build on Linux
 
